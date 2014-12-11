@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Pong</title>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<STYLE type="text/css">
+   			form > input {
+			    width: 100%;
+			}
+
+			form > select {
+				width: 100%;
+			}
+ 		</STYLE>
+	</head>
+	<body>
+		<div style="margin-left: auto; margin-right: auto; width: 850px; text-align:center;">
+			<h1>Pong</h1>
+			<h4>Daniel Castro Alvarado, Jefferson Hernández Panqueba, David Dáger Mora
+			</h4>
+			<table>
+				<tr>
+					<td>
+						<canvas id="pong_canvas" width="650" height="400" style="border: 1px solid #000;"></canvas>
+
+						<div style="margin-left: auto; margin-right: auto; padding: 5px; border: 2px solid #c1c1c1; background: #EEEEEE; border-radius: 10px; display: inline-block;">
+							<span style="font-size: x-large;"><span id="score_a">0</span> 
+								<span style="color: #DDD;">-</span>
+								<span id="score_b">0</span> </span>
+						</div>
+					</td>
+					<td style="vertical-align: top; padding-left: 10px;">
+						<h2>Configuración</h2>
+						<form style="text-align: left; width:100%" id="config_form">
+							<label for="left_player">Jugador izquierdo</label><br>
+							 <select id="left_player" required>
+							  	<option value="0">Humano (A y Z)</option>
+							  	<option value="1">IA 1</option>
+							  	<option value="2">IA 2</option>
+							  	<option value="3">IA 3</option>
+							  	<option value="4">IA 4</option>
+							 </select><br>
+							 <label for="right_player">Jugador derecho</label><br>
+							 <select id="right_player" required>
+							  	<option value="0">Humano (Arriba y abajo)</option>
+							  	<option value="1">IA 1</option>
+							  	<option value="2">IA 2</option>
+							  	<option value="3">IA 3</option>
+							  	<option value="4">IA 4</option>
+							 </select><br>
+
+							 <label for="paddle_speed">Velocidad de la plataforma</label><br>
+							 <input type="number" min="1" id="paddle_speed" required><br>
+							 <label for="ball_speed">Velocidad de la bola</label><br>
+							 <input type="number" min="1" id="ball_speed" required><br>
+							 <label for="ball_increment">Incremento de velocidad de la bola</label><br>
+							 <input type="number" min="0.2" step="0.1" id="ball_increment" required><br>
+							 <label for="human_speed">Velocidad para humanos</label><br>
+							 <input type="number" min="1" id="human_speed" required><br>
+							 <label for="player_debug">Mostrar cálculos internos de los jugadores: </label><br>
+							 <input type="checkbox" id="player_debug"><br>
+
+
+							 <input type="button" onclick="restartGame()" value="Aplicar y reiniciar">
+						</form>
+					</td>
+				</tr>
+			</table>
+		</div>
+
+		
+
+		<script type="text/javascript">
+			function sign(x) {
+				if (x == 0)
+					return 0;
+				return x / Math.abs(x);
+			}
+
+			var canvas = document.getElementById("pong_canvas"); 
+			var PADDLE_WIDTH = 32;
+			var PADDLE_HEIGHT = 100;
+			var PADDLE_SPEED = 3;
+			var BALL_BASE_SPEED = 6;
+			var BALL_MAX_ANGLE = 75 * Math.PI / 180.0;
+			var BALL_MAX_SPEED = 30;
+			var BALL_RADIUS = 5;
+			var BALL_SPEED_INCREMENT = 0.2;
+			var HUMAN_SPEED = 1;
+			var PLAYER_DEBUG = true;
+			var eps = 0.000001;
+
+			document.getElementById("ball_speed").max = BALL_MAX_SPEED;
+			document.getElementById("paddle_speed").value = PADDLE_SPEED;
+			document.getElementById("ball_speed").value = BALL_BASE_SPEED;
+			document.getElementById("ball_increment").value = BALL_SPEED_INCREMENT;
+			document.getElementById("human_speed").value = HUMAN_SPEED;
+			document.getElementById("player_debug").checked = PLAYER_DEBUG;
+
+
+			function human_player(paddle, keys) {
+				var keys_down = {};
+				keys_down[keys.up] = false;
+				keys_down[keys.down] = false;
+
+				function key_down(e) {
+					if (e.keyCode == keys.up || e.keyCode == keys.down) {
+						keys_down[e.keyCode] = true;
+					}
+				}
+
+				function key_up(e) {
+					if (e.keyCode == keys.up || e.keyCode == keys.down) {
+						keys_down[e.keyCode] = false;
+					}
+				}
+
+				document.addEventListener('keyup', key_up);
+				document.addEventListener('keydown', key_down);
+
+				return {
+					paint: function(ctx) {
+
+					},
+					process: function() {
+						/*console.log("keys_down: " + keys_down[keys.up] + " " + keys_down[keys.down]);*/
+						if(keys_down[keys.up]) {
+							for(var i = 0; i < HUMAN_SPEED; ++i) {
+								paddle.move_up();
+							}
+						} else if(keys_down[keys.down]) {
+							for(var i = 0; i < HUMAN_SPEED; ++i) {
+								paddle.move_down();
+							}
+						}
+					},
+					cleanup: function() {
+						document.removeEventListener('keyup', key_up);
+						document.removeEventListener('keydown', key_down);
+					}					
+				};
+			}
+
+			function ai1_player(paddle, game) {
+				return {
+					paint: function(ctx) {
+
+					},
+					process: function() {
+						paddle.goTo(game.ball.y);
+					},
+					cleanup: function() { }					
+				};
+			}
+
+			function ai2_player(paddle, game) {
+				return {
+					paint: function(ctx) {
+
+					},
+					process: function() {
+						if (game.last_paddle === paddle) {
+							paddle.goTo(canvas.height / 2);
+						} else {
+							paddle.goTo(game.ball.y);
+						}
+					},
+					cleanup: function() { }					
+				};
+			}
+
+			function compute_end_y(paddle, game, intersections_out) {
+				var x = game.ball.x;
+				var y = game.ball.y;
+				var dx = game.ball.dx;
+				var dy = game.ball.dy;
+				//console.log("Computing path...");
+				
+
+				while(true) {
+					if (Math.abs(dx) == 0)
+						break;
+					if (Math.abs(dy) == 0)
+						break;
+
+					var m = dy / dx;
+					var b = y - m * x;
+
+					// Si dy < 0, buscamos el corte con y = 0,
+					// de lo contrario con y = canvas.height
+					var x_intersection = dy < 0 ? -b / m : 
+						(canvas.height - b) / m;
+
+					
+					// ¿Está dentro del cuadro de juego?
+					if (0 <= x_intersection && 
+							x_intersection <= canvas.width) {
+						x = x_intersection;
+						y = m * x + b;
+
+						intersections_out.push([x, y]);
+						dy = -dy;
+					} else {
+						break;
+					}
+				}
+
+				m = dy / dx;
+				b = y - m * x;
+				//console.log("Last m = " + m);
+
+
+				// Hallamos el punto de corte con la posición
+				// de la paleta
+				var target_x = paddle.x;
+				if (paddle === game.left_paddle) {
+					target_x += PADDLE_WIDTH;
+				}
+
+				return m * target_x + b;
+			}
+
+			function ai3_player(paddle, game, debug_color) {
+				var computed_y = null;
+				var cached_hits = -1;
+				var intersections = [];
+
+				return {
+					paint: function(ctx) {
+						ctx.fillStyle = debug_color;
+						for(var i = 0; i < intersections.length; ++i) {
+							ctx.beginPath();
+	    					ctx.arc(intersections[i][0], intersections[i][1], 3, 0, 2 * Math.PI);
+	    					
+	    				 	ctx.fill();
+						}
+					},
+					process: function() {
+						if (game.last_paddle === paddle) {
+							paddle.goTo(canvas.height / 2);
+							computed_y = null;
+
+							//console.log("To center...");
+						} else {
+							if (computed_y === null || cached_hits !== game.paddle_hits) {
+								intersections = [];
+								computed_y = compute_end_y(paddle, game, intersections);
+								cached_hits = game.paddle_hits;
+								//console.log("Going to y = " + computed_y );
+							}
+
+							paddle.goTo(computed_y);
+							//computed_y = null;
+						}
+					},
+					cleanup: function() { }					
+				};
+			}
+
+			function ai4_player(paddle, game, debug_color) {
+				var computed_y = null;
+				var cached_hits = -1;
+				var intersections = [];
+
+				return {
+					paint: function(ctx) {
+						ctx.fillStyle = debug_color;
+						for(var i = 0; i < intersections.length; ++i) {
+							ctx.beginPath();
+	    					ctx.arc(intersections[i][0], intersections[i][1], 3, 0, 2 * Math.PI);
+	    					
+	    				 	ctx.fill();
+						}
+					},
+					process: function() {
+						if (game.last_paddle === paddle) {
+							paddle.goTo(canvas.height / 2);
+							computed_y = null;
+						} else {
+							if (computed_y === null || cached_hits !== game.paddle_hits) {
+								intersections = [];
+								computed_y = compute_end_y(paddle, game, intersections);
+								var offset = Math.random() * PADDLE_HEIGHT / 2;
+								// Apuntamos al borde más cercano:
+								if (paddle.y > computed_y) {
+									// Pegamos con la parte superior
+									computed_y += offset;
+								} else {
+									// Pegamos con la parte inferior
+									computed_y -= offset;
+								}
+								cached_hits = game.paddle_hits;
+							}
+
+							paddle.goTo(computed_y);
+						}
+					},
+					cleanup: function() { }					
+				};
+			}
+			
+			function create_paddle(x, start_y) {
+				function move(sign) {
+					var new_y = paddle.y + sign * PADDLE_SPEED;
+					if (0 <= new_y && new_y + PADDLE_HEIGHT <= canvas.height) {
+						paddle.y = new_y;
+					}
+				}
+				var paddle = {
+					x: x,
+					y: start_y,
+
+					paint: function(ctx) {
+						ctx.fillStyle = "#FF0000";
+						ctx.fillRect(x, this.y, PADDLE_WIDTH, PADDLE_HEIGHT); 
+					},
+					move_up: function() { move(-1); },
+					move_down: function() { move(1); },
+					goTo: function(target) {
+						var center = paddle.y + PADDLE_HEIGHT / 2;
+						if (target - center < -PADDLE_SPEED) {
+							paddle.move_up();
+						} else if(target - center > PADDLE_SPEED) {
+							paddle.move_down();
+						}
+					}
+				};
+
+				return paddle;
+			}
+
+			function create_ball(game) {
+
+				function hit_test(r1x, r1y, r1w, r1h, r2x, r2y, r2w, r2h) {
+					return !(r1x + r1w < r2x || r1x > r2x + r2w || 
+							 r1y + r1h < r2y || r1y > r2y + r2h );
+				}
+
+				var ball = {
+					reset: function(start_x, start_y, start_dx, start_dy) {
+						this.x = start_x;
+						this.y = start_y;
+						this.dx = start_dx * 1.0;
+						this.dy = start_dy * 1.0;
+						this.speed = BALL_BASE_SPEED;
+					},
+
+					process: function() {
+						if (this.x < 0 || this.x > canvas.width) {
+							game.on_ball_out();
+							return;
+						}
+
+						if (this.y <= 0 || this.y >= canvas.height) {
+							var m = this.dy / this.dx;
+							var b = this.y - m * this.x;
+							if (this.y <= 0) {
+								this.y = 0;
+							} else {
+								this.y = canvas.height;
+							}
+							this.x = (this.y - b) / m;
+							this.dy = -this.dy;
+						}
+
+						var paddles = [game.left_paddle, game.right_paddle];
+
+						for(var i = 0; i < paddles.length; ++i) {
+							if (hit_test(paddles[i].x, paddles[i].y, PADDLE_WIDTH,
+									PADDLE_HEIGHT, this.x - BALL_RADIUS, this.y - BALL_RADIUS,
+									2 * BALL_RADIUS, 2 * BALL_RADIUS)) {
+								// Tenemos en cuenta qué tan lejos del centro pegó
+								// la pelota. En el centro se devuelve de manera 
+								// horizontal, y en los bordes se devuelve con 
+								// ángulos más pronunciados
+
+
+								var center = paddles[i].y + PADDLE_HEIGHT / 2;
+								var offset = this.y - center;
+								var normalized_offset = offset / 
+										(eps + 2 * BALL_RADIUS + PADDLE_HEIGHT / 2);
+								var angle = normalized_offset * BALL_MAX_ANGLE;
+
+								this.dy = Math.sin(angle);
+								this.dx = Math.cos(angle);
+								if (i === 1)
+									this.dx *= -1;
+
+								game.on_paddle_hit(paddles[i]);
+								break;
+							}
+						}
+
+						var norm = Math.sqrt(this.dx * this.dx + this.dy * this.dy);
+						this.x += this.speed * this.dx / norm;
+						this.y += this.speed * this.dy / norm;
+					},
+
+					paint: function(ctx) {
+						ctx.beginPath();
+    					ctx.arc(this.x, this.y, BALL_RADIUS, 0, 2 * Math.PI);
+    					ctx.fillStyle = "#FF0000";
+    				 	ctx.fill();
+					}
+				};
+
+				return ball;
+			}
+
+			function create_game() {
+				var game = {};
+				var score_a = document.getElementById("score_a");
+				var score_b = document.getElementById("score_b");
+
+
+
+				function reset_ball(start_side) {
+					var margin = PADDLE_WIDTH + BALL_RADIUS + 2;
+					var angle = Math.random() * 2 * BALL_MAX_ANGLE - BALL_MAX_ANGLE;
+					var start_x = start_side === 0 ? margin : canvas.width - margin;
+					var start_y = Math.floor(Math.random() * 
+						(canvas.height - 2 * BALL_RADIUS) + BALL_RADIUS);
+
+					if (start_side == 1) {
+						angle += Math.PI;
+					}
+
+					var start_dx = Math.cos(angle);
+					var start_dy = Math.sin(angle);
+
+					game.ball.reset(start_x, start_y, start_dx, start_dy);
+				}
+
+				game.left_paddle = create_paddle(0, 
+									(canvas.height - PADDLE_HEIGHT) / 2.0);
+				game.right_paddle = create_paddle(canvas.width - PADDLE_WIDTH, 
+									(canvas.height - PADDLE_HEIGHT) / 2.0);
+				game.score = [0, 0];
+				score_a.innerHTML = game.score[0].toString();
+				score_b.innerHTML = game.score[1].toString();
+				game.ball = create_ball(game);
+				game.last_paddle = game.left_paddle;
+				reset_ball(0);
+				game.paddle_hits = 0;
+
+				var intervalId = null;
+
+				game.setUpPlayers = function(left_player, right_player)  {
+					game.players = [left_player, right_player];
+				}
+
+				game.start_game = function() {
+					if (!game.players) {
+						console.log("Players not set up");
+						return;
+					}
+					intervalId = setInterval(function() {
+						ctx = canvas.getContext("2d");
+						ctx.clearRect(0, 0, canvas.width, canvas.height);
+						game.left_paddle.paint(ctx);
+						game.right_paddle.paint(ctx);
+						for(var i = 0; i < game.players.length; ++i) {
+							game.players[i].process();
+							if(PLAYER_DEBUG)
+								game.players[i].paint(ctx);
+						}
+						game.ball.process();
+						game.ball.paint(ctx);
+					}, 20);
+				}
+
+				game.end_game = function() {
+					if(intervalId !== null)
+						clearInterval(intervalId);
+					if (game.players) {
+						for(var i = 0; i < game.players.length; ++i)
+							game.players[i].cleanup();
+					}
+				}
+
+				game.on_ball_out = function() {
+					console.log("Ball ended in x = " + this.ball.x + ", y = " +
+						this.ball.y);
+
+					game.paddle_hits = 0;
+					
+					if (this.ball.x > canvas.width) {
+						this.score[0] += 1;
+						score_a.innerHTML = this.score[0].toString();
+						this.last_paddle = this.right_paddle;
+						reset_ball(1);
+					} else {
+						this.score[1] += 1;
+						score_b.innerHTML = this.score[1].toString();
+						reset_ball(0);
+						this.last_paddle = this.left_paddle;
+					}
+					console.log(this.score);
+				}
+
+				game.on_paddle_hit = function(paddle) {
+					game.last_paddle = paddle;
+					game.paddle_hits += 1;
+					game.ball.speed = 
+						Math.min(game.ball.speed + BALL_SPEED_INCREMENT, BALL_MAX_SPEED);
+				}
+
+				return game;
+			}
+
+			function restartGame() {
+				var form = document.getElementById("config_form");
+				if (form.checkValidity && !form.checkValidity()) {
+					alert("Algunas opciones no son correctas. Revise la configuración y vuelva a intentarlo");
+					return;
+				}
+
+				if (typeof window.game !== "undefined") 
+					window.game.end_game();
+
+				PADDLE_SPEED = parseFloat(document.getElementById("paddle_speed").value);
+				BALL_BASE_SPEED = parseFloat(document.getElementById("ball_speed").value);
+				BALL_SPEED_INCREMENT = parseFloat(document.getElementById("ball_increment").value);
+				HUMAN_SPEED = parseFloat(document.getElementById("human_speed").value);
+				PLAYER_DEBUG = document.getElementById("player_debug").checked;
+
+				window.game = create_game();
+
+				var players_left = [human_player(game.left_paddle, 
+										{ up: '65', down: '90' }),
+									ai1_player(game.left_paddle, game),
+									ai2_player(game.left_paddle, game),
+									ai3_player(game.left_paddle, game, "#0000FF"),
+									ai4_player(game.left_paddle, game, "#0000FF") ];
+				var players_right = [human_player(game.right_paddle, 
+										{ up: '38', down: '40' }),
+									ai1_player(game.right_paddle, game),
+									ai2_player(game.right_paddle, game),
+									ai3_player(game.right_paddle, game, "#00FF00"),
+									ai4_player(game.right_paddle, game, "#00FF00") ];
+
+				var left = players_left[
+					document.getElementById("left_player").selectedIndex];
+				var right = players_right[
+					document.getElementById("right_player").selectedIndex];
+				
+				window.game.setUpPlayers(left, right);
+				window.game.start_game();
+			}
+		</script>
+	</body>
+</html>
